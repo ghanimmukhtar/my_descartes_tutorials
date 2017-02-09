@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<launch>
+  <include file="$(find baxter_moveit_config)/launch/descartes_demo_baxter.launch">
+   <arg name="load_robot_description" value="true"/>
+    <!--remap from="/joint_states" to="/robot/joint_states"/-->
+  </include>
+
+</launch>

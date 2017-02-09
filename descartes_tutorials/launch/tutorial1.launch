@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<launch>
+  <!--rosparam command="load" file="$(find baxter_moveit_config)/config/descartes_baxter_joints_names.yaml"/-->
+  <rosparam command="load" file="$(find baxter_moveit_config)/config/baxter_left_arm_joints_names.yaml"/>
+  <arg name="right_electric_gripper" default="true"/>
+  <arg name="left_electric_gripper" default="true"/>
+  <arg name="left_tip_name" default="left_gripper"/>
+  <arg name="right_tip_name" default="right_gripper"/>
+  <param name="robot_description_semantic"
+      command="$(find xacro)/xacro.py --inorder $(find baxter_moveit_config)/config/baxter.srdf.xacro
+          left_electric_gripper:=$(arg left_electric_gripper)
+          right_electric_gripper:=$(arg right_electric_gripper)
+          left_tip_name:=$(arg left_tip_name)
+          right_tip_name:=$(arg right_tip_name)"/>
+  <group ns="robot_description_planning">
+    <rosparam command="load" file="$(find baxter_moveit_config)/config/joint_limits.yaml"/>
+  </group>
+  <group ns="robot_description_kinematics">
+    <rosparam command="load" file="$(find baxter_moveit_config)/config/kinematics.yaml"/>
+  </group>
+
+  <node name="tutorial1" pkg="descartes_tutorials" type="tutorial1" args="$(arg x) $(arg y) $(arg z) $(arg rx) $(arg ry) $(arg rz)" output="screen" >
+   <!--remap from="/robot/joint_states" to="/joint_states"/-->
+   
+  </node>
+
+</launch>

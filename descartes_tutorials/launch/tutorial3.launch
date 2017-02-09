@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<launch>
+
+  <node name="tutorial3" pkg="descartes_tutorials" type="tutorial3" output="screen" >
+   <!--remap from="/move_group/fake_controller_joint_states" to="/joint_states"/-->
+  </node>
+
+</launch>

@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<launch>
+
+  <node name="tutorial2" pkg="descartes_tutorials" type="tutorial2" output="screen" />
+   
+
+</launch>
