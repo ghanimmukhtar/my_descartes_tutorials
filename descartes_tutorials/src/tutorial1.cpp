@@ -13,13 +13,18 @@
 // Includes the planner we will be using
 #include <descartes_planner/dense_planner.h>
 
+#include <moveit/planning_scene/planning_scene.h>
+
 #include <moveit/move_group_interface/move_group.h>
 #include <moveit/robot_state/conversions.h>
 
+#include <baxter_core_msgs/EndpointState.h>
 #include <baxter_core_msgs/JointCommand.h>
 
 typedef std::vector<descartes_core::TrajectoryPtPtr> TrajectoryVec;
 typedef TrajectoryVec::const_iterator TrajectoryIter;
+
+Eigen::VectorXd left_end_effector_pose(6);
 
 std::vector<double> joints_values(19);
 std::vector <std::string> variable_names(19);
@@ -32,6 +37,30 @@ void jocommCallback(sensor_msgs::JointState jo_state)
         joints_values[i] = jo_state.position[i];
         //std::cout << jo_state.position[i] << std::endl;
     }
+}
+
+//get baxter left eef pose
+void locate_left_eef_pose(baxter_core_msgs::EndpointState& l_eef_feedback){
+
+    geometry_msgs::Pose left_eef_pose_quat = l_eef_feedback.pose;
+    tf::Quaternion left_eef_rpy_orientation;
+
+    tf::quaternionMsgToTF(left_eef_pose_quat.orientation, left_eef_rpy_orientation);
+
+    double roll, yaw, pitch;
+    tf::Matrix3x3 m(left_eef_rpy_orientation);
+    m.getRPY(roll, pitch, yaw);
+    left_end_effector_pose << left_eef_pose_quat.position.x,
+            left_eef_pose_quat.position.y,
+            left_eef_pose_quat.position.z,
+            roll,
+            pitch,
+            yaw;
+}
+
+//call back that register end effector pose and rearrange the orientation in RPY
+void left_eef_Callback(baxter_core_msgs::EndpointState l_eef_feedback){
+    locate_left_eef_pose(l_eef_feedback);
 }
 
 /**
@@ -62,43 +91,51 @@ int main(int argc, char** argv)
   ros::init(argc, argv, "descartes_tutorial");
   ros::NodeHandle nh;
 
-  ros::Subscriber sub_jointmsg;
-  sub_jointmsg = nh.subscribe<sensor_msgs::JointState>("/robot/joint_states",1,jocommCallback);
-  ros::Publisher pub_msg;
-  pub_msg = nh.advertise<baxter_core_msgs::JointCommand>("/robot/limb/left/joint_command",1);
+  ros::Subscriber sub_jointmsg = nh.subscribe<sensor_msgs::JointState>("/robot/joint_states", 1, jocommCallback);
+  ros::Subscriber sub_l_eef_msg = nh.subscribe<baxter_core_msgs::EndpointState>("/robot/limb/left/endpoint_state", 10, left_eef_Callback);
+  //ros::Publisher planning_scene_publish = nh.advertise<moveit_msgs::PlanningScene>("/planning_scene", 1);
   // Required for communication with moveit components
   ros::AsyncSpinner spinner (1);
   spinner.start();
 
-  ros::Publisher planning_scene_publish = nh.advertise<moveit_msgs::PlanningScene>("planning_scene",1);
-  //collision objects
-  moveit_msgs::AttachedCollisionObject attached_object, attached_object2;
-  attached_object.link_name = "base"; attached_object2.link_name = "base";
-  /* The header must contain a valid TF frame*/
-  attached_object.object.header.frame_id = "base"; attached_object2.object.header.frame_id = "base";
-  /* The id of the object */
-  attached_object.object.id = "box"; attached_object2.object.id = "second_box";
-  /* A default pose */
-  geometry_msgs::Pose pose; geometry_msgs::Pose pose_2;
-  pose.orientation.w = 1.0;   pose.position.x =  0.6;    pose.position.y =  0.5;    pose.position.z =  0.5;
-  pose_2.orientation.w = 1.0;   pose_2.position.x =  0.5;    pose_2.position.y =  -0.2;    pose_2.position.z =  0.2;
-  /* Define a box to be attached */
-  shape_msgs::SolidPrimitive primitive;
-  primitive.type = primitive.BOX;
-  primitive.dimensions.resize(3);
-  primitive.dimensions[0] = 0.4;    primitive.dimensions[1] = 0.4;    primitive.dimensions[2] = 0.1;
-  attached_object.object.primitives.push_back(primitive); //attached_object2.object.primitives.push_back(primitive);
-  attached_object.object.primitive_poses.push_back(pose); //attached_object2.object.primitive_poses.push_back(pose_2);
-  attached_object.object.operation = attached_object.object.ADD; //attached_object2.object.operation = attached_object2.object.ADD;
-  ROS_INFO("Adding two objects into the world at the locations specified by poses.");
-  moveit_msgs::PlanningScene planning_scene_2;
-  planning_scene_2.is_diff = true;
-  planning_scene_2.world.collision_objects.push_back(attached_object.object);
-  planning_scene_publish.publish(planning_scene_2);
+
+  ros::Publisher planning_scene_publish = nh.advertise<moveit_msgs::PlanningScene>("/planning_scene",1);
+
+  bool with_collision = false;
+  nh.getParam("with_collision", with_collision);
+
   robot_model_loader::RobotModelLoader robot_model_loader("robot_description");
   robot_model::RobotModelPtr robot_model = robot_model_loader.getModel();
-  planning_scene::PlanningScene my_plan_scene(robot_model);
-  my_plan_scene.setPlanningSceneDiffMsg(planning_scene_2);
+  planning_scene::PlanningScenePtr my_plan_scene(new planning_scene::PlanningScene(robot_model));
+
+  if(with_collision){
+      //collision objects
+      moveit_msgs::AttachedCollisionObject attached_object, attached_object2;
+      attached_object.link_name = "base"; attached_object2.link_name = "base";
+      // The header must contain a valid TF frame
+      attached_object.object.header.frame_id = "base"; attached_object2.object.header.frame_id = "base";
+      // The id of the object
+      attached_object.object.id = "box"; attached_object2.object.id = "second_box";
+      // A default pose
+      geometry_msgs::Pose pose; geometry_msgs::Pose pose_2;
+      pose.orientation.w = 1.0;   pose.position.x =  0.6;    pose.position.y =  0.5;    pose.position.z =  0.1;
+      pose_2.orientation.w = 1.0;   pose_2.position.x =  0.5;    pose_2.position.y =  -0.2;    pose_2.position.z =  0.2;
+      // Define a box to be attached
+      shape_msgs::SolidPrimitive primitive;
+      primitive.type = primitive.BOX;
+      primitive.dimensions.resize(3);
+      primitive.dimensions[0] = 0.4;    primitive.dimensions[1] = 0.4;    primitive.dimensions[2] = 0.1;
+      attached_object.object.primitives.push_back(primitive); //attached_object2.object.primitives.push_back(primitive);
+      attached_object.object.primitive_poses.push_back(pose); //attached_object2.object.primitive_poses.push_back(pose_2);
+      attached_object.object.operation = attached_object.object.ADD; //attached_object2.object.operation = attached_object2.object.ADD;
+      ROS_INFO("Adding two objects into the world at the locations specified by poses.");
+      moveit_msgs::PlanningScene planning_scene_2;
+      planning_scene_2.robot_model_name = "baxter";
+      planning_scene_2.is_diff = true;
+      planning_scene_2.world.collision_objects.push_back(attached_object.object);
+      planning_scene_publish.publish(planning_scene_2);
+      my_plan_scene->setPlanningSceneDiffMsg(planning_scene_2);
+  }
 
   //moveit::planning_interface::MoveGroup::Plan my_plan;
   //create a move group that will be used to plan the motion later, in this case it is the right arm of the baxter robot
@@ -149,7 +186,7 @@ int main(int argc, char** argv)
   const std::string group_name = "left_arm";
 
   // Name of frame in which you are expressing poses. Typically "world_frame" or "base_link".
-  const std::string world_frame = "/base";
+  const std::string world_frame = "/world";
 
   // tool center point frame (name of link associated with tool)
   const std::string tcp_frame = "left_gripper";
@@ -160,7 +197,17 @@ int main(int argc, char** argv)
     ROS_INFO("Could not initialize robot model");
     return -1;
   }
+  if(with_collision){
+      model->setplanningscene(my_plan_scene);
+      planning_scene::PlanningScenePtr test_scene(new planning_scene::PlanningScene(robot_model));
+      model->getplanningscene(test_scene);
 
+      collision_detection::CollisionWorldConstPtr my_world = test_scene->getCollisionWorld();
+      std::vector<std::string> my_world_objects = my_world->getWorld()->getObjectIds();
+      ROS_WARN_STREAM("object number is: " << my_world_objects.size());
+      for(int i = 0; i < my_world_objects.size(); i++)
+          ROS_WARN_STREAM("name of object number: " << i << " is: " << my_world_objects[i]);
+  }
   // 2. Define sequence of points
   //first get current position of end effector
   Eigen::Affine3d my_pose;
@@ -169,6 +216,7 @@ int main(int argc, char** argv)
   bool success = model->getFK(left_arm_joint_values,my_pose);
   if (success)
       current_position = my_pose.translation();
+
   //std::cout << "robot pose is: \n" << my_pose.translation() << std::endl;
   model->setCheckCollisions(true);
 
@@ -180,8 +228,8 @@ int main(int argc, char** argv)
       //double x = current_position(0), y = current_position(1), z = current_position(2), rx = 0.0, ry = M_PI, rz = 0.0;
       if (i > 0){
           double x = atof(argv[1]), y = atof(argv[2]), z = atof(argv[3]),
-          rx = atof(argv[4]), ry = atof(argv[5]), rz = atof(argv[6]);
-          pt = makeTolerancedCartesianPoint(x,y,z,rx,ry,rz);
+          rx = left_end_effector_pose(3), ry = left_end_effector_pose(4), rz = left_end_effector_pose(5);
+          pt = makeTolerancedCartesianPoint(x, y, z, rx, ry, rz);
       }
       else pt = makeTolerancedCartesianPoint2(my_pose);
 

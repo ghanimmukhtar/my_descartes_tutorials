@@ -19,7 +19,9 @@
     <rosparam command="load" file="$(find baxter_moveit_config)/config/kinematics.yaml"/>
   </group>
 
-  <node name="tutorial1" pkg="descartes_tutorials" type="tutorial1" args="$(arg x) $(arg y) $(arg z) $(arg rx) $(arg ry) $(arg rz)" output="screen" >
+  <param name="with_collision" value="true"/>
+
+  <node name="tutorial1" pkg="descartes_tutorials" type="tutorial1" args="$(arg x) $(arg y) $(arg z)" output="screen" >
    <!--remap from="/robot/joint_states" to="/joint_states"/-->
    
   </node>
